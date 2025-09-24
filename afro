@@ -1,0 +1,23 @@
+#!/bin/bash
+# This script runs the Flutter app with the SERVER_CLIENT_ID from the .env file.
+
+# Check if the .env file exists
+if [ -f .env ]
+then
+  source .env
+else
+  echo ".env file not found. Please create one with your SERVER_CLIENT_ID."
+  exit 1
+fi
+
+# Check if the SERVER_CLIENT_ID was loaded successfully from the file
+if [ -z "$SERVER_CLIENT_ID" ]
+then
+      echo "SERVER_CLIENT_ID not found or is empty in your .env file."
+      exit 1
+fi
+
+# Run the app with the dart-define flag, using the variable we just loaded.
+echo "Running app with SERVER_CLIENT_ID..."
+flutter run --dart-define=SERVER_CLIENT_ID=$SERVER_CLIENT_ID "$@"
+

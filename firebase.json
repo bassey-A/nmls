@@ -1,0 +1,53 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "nlms-niger",
+          "appId": "1:704034143445:android:dfa8ba39737c4c7f27765c",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "nlms-niger",
+          "configurations": {
+            "android": "1:704034143445:android:dfa8ba39737c4c7f27765c",
+            "ios": "1:704034143445:ios:2f0332f8a0a139dd27765c",
+            "macos": "1:704034143445:ios:2f0332f8a0a139dd27765c",
+            "web": "1:704034143445:web:6fcde3078cdf95ab27765c",
+            "windows": "1:704034143445:web:869520966090be7f27765c"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "venv",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "runtime": "python313"
+    }
+  ]
+}
