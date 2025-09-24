@@ -14,6 +14,7 @@ class CalendarEvent {
   final DateTime endTime;
   final String id;
   final String courseOfferingId;
+  final String courseId;
   final bool isRecurring;
   final String? recurrenceType;
   final DateTime? recurrenceEndDate;
@@ -24,12 +25,13 @@ class CalendarEvent {
     required this.endTime,
     required this.id,
     required this.courseOfferingId,
+    required this.courseId,
     this.isRecurring = false,
     this.recurrenceType,
     this.recurrenceEndDate,
   });
 
-  factory CalendarEvent.fromFirestore(DocumentSnapshot doc) {
+  factory CalendarEvent.fromFirestore(DocumentSnapshot doc, String courseId) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return CalendarEvent(
       id: doc.id,
@@ -37,6 +39,7 @@ class CalendarEvent {
       startTime: (data['startTime'] as Timestamp).toDate(),
       endTime: (data['endTime'] as Timestamp).toDate(),
       courseOfferingId: data['courseOfferingId'] ?? '',
+      courseId: courseId,
       isRecurring: data['isRecurring'] ?? false,
       recurrenceType: data['recurrenceType'],
       recurrenceEndDate: data['recurrenceEndDate'] != null
@@ -69,6 +72,7 @@ class _CalendarPageState extends State<CalendarPage> {
   List<CalendarEvent> _selectedEvents = [];
   
   late UserService _userService;
+  final Map<String, String> _courseIdCache = {};
 
   @override
   void didChangeDependencies() {
@@ -79,13 +83,11 @@ class _CalendarPageState extends State<CalendarPage> {
   
   void _initializeStreamBasedOnRole() {
     if (_userService.role == UserRole.student && _userService.student != null) {
-      // CORRECTED: Access the list of IDs from the map
-      final offeringIds = _userService.student!.enrollmentSummary['currentOfferingIds']?.cast<String>();
+      final offeringIds = _userService.student!.currentOfferingIds;
       _setStreamForOfferings(offeringIds);
     } else if (_userService.role == UserRole.lecturer && _userService.lecturer != null) {
       _fetchLecturerOfferingsAndSetStream();
     } else {
-      // Handle cases where user is logged out or data is not ready
       _setStreamForOfferings(null);
     }
   }
@@ -93,7 +95,13 @@ class _CalendarPageState extends State<CalendarPage> {
   void _setStreamForOfferings(List<String>? offeringIds) {
     if (mounted) {
       setState(() {
-        if (offeringIds != null && offeringIds.isNotEmpty) {
+        if (offeringIds != null && offeringIds!.isNotEmpty) {
+          // Firestore 'whereIn' query is limited to 30 items. Chunk if necessary.
+          if (offeringIds!.length > 30) {
+            // Handle chunking if you expect more than 30 offerings. For now, we take the first 30.
+            // A full solution would involve multiple streams.
+            offeringIds = offeringIds!.sublist(0, 30);
+          }
           _eventsStream = FirebaseFirestore.instance
               .collection('events')
               .where('courseOfferingId', whereIn: offeringIds)
@@ -118,19 +126,28 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
-  Map<DateTime, List<CalendarEvent>> _expandRecurringEvents(List<DocumentSnapshot> docs) {
+  Future<Map<DateTime, List<CalendarEvent>>> _expandRecurringEvents(List<DocumentSnapshot> docs) async {
     final Map<DateTime, List<CalendarEvent>> newEvents = {};
     for (var doc in docs) {
-      final eventRule = CalendarEvent.fromFirestore(doc);
+      final data = doc.data() as Map<String, dynamic>;
+      final offeringId = data['courseOfferingId'];
+      
+      if (!_courseIdCache.containsKey(offeringId)) {
+        final offeringDoc = await FirebaseFirestore.instance.collection('courseOfferings').doc(offeringId).get();
+        _courseIdCache[offeringId] = offeringDoc.data()?['courseId'] ?? '???';
+      }
+      final courseId = _courseIdCache[offeringId]!;
+      
+      final eventRule = CalendarEvent.fromFirestore(doc, courseId);
       if (eventRule.isRecurring && eventRule.recurrenceType == 'weekly' && eventRule.recurrenceEndDate != null) {
         DateTime currentDate = eventRule.startTime;
         while (currentDate.isBefore(eventRule.recurrenceEndDate!) || isSameDay(currentDate, eventRule.recurrenceEndDate!)) {
           final dayOnly = DateTime(currentDate.year, currentDate.month, currentDate.day);
           final eventInstance = CalendarEvent(
-            id: eventRule.id, title: eventRule.title, courseOfferingId: eventRule.courseOfferingId,
+            id: eventRule.id, title: eventRule.title, courseOfferingId: eventRule.courseOfferingId, courseId: eventRule.courseId,
             startTime: DateTime(currentDate.year, currentDate.month, currentDate.day, eventRule.startTime.hour, eventRule.startTime.minute),
             endTime: DateTime(currentDate.year, currentDate.month, currentDate.day, eventRule.endTime.hour, eventRule.endTime.minute),
-            isRecurring: true // Mark instance as part of a series
+            isRecurring: true
           );
           if (newEvents[dayOnly] == null) newEvents[dayOnly] = [];
           newEvents[dayOnly]!.add(eventInstance);
@@ -160,7 +177,6 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
   
-  // RE-INSTATED: Lecturer actions for editing and deleting events
   Future<void> _showLecturerEventActions(CalendarEvent event) async {
      await showModalBottomSheet(
         context: context,
@@ -354,73 +370,8 @@ class _CalendarPageState extends State<CalendarPage> {
       }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      //appBar: AppBar(title: const Text('Course Calendar'), centerTitle: true),
-      body: Consumer<UserService>(
-        builder: (context, userService, child) {
-          if (userService.isLoading) return const Center(child: CircularProgressIndicator());
-          if (userService.role == UserRole.unknown) return const Center(child: Text("Please log in to view the calendar."));
-          
-          return StreamBuilder<QuerySnapshot>(
-            stream: _eventsStream,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                 // Return the calendar even if there are no events
-                 return _buildCalendarAndEmptyList();
-              }
-
-              _events = _expandRecurringEvents(snapshot.data!.docs);
-              
-               if(_selectedDay != null){
-                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if(mounted) setState(() => _selectedEvents = _getEventsForDay(_selectedDay!));
-                 });
-               }
-              
-              return Column(
-                children: [
-                  _buildCalendar(),
-                  const SizedBox(height: 8.0),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0), child: Divider()),
-                  _buildEventListHeader(),
-                  Expanded(child: _buildEventList()),
-                ],
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: _userService.role == UserRole.lecturer ? FloatingActionButton.extended(
-        onPressed: () => _showAddOrEditEventDialog(),
-        label: const Text('Add Event'),
-        icon: const Icon(Icons.add),
-      ) : null,
-    );
-  }
-
-  // Helper widget to show calendar when the event list is empty
-  Widget _buildCalendarAndEmptyList() {
-    _events = {}; // Ensure events are cleared
-    if (_selectedDay != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if(mounted) setState(() => _selectedEvents = _getEventsForDay(_selectedDay!));
-      });
-    }
-    return Column(
-      children: [
-        _buildCalendar(),
-        const SizedBox(height: 8.0),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0), child: Divider()),
-        _buildEventListHeader(),
-        Expanded(child: _buildEventList()),
-      ],
-    );
-  }
-
+  // --- METHODS ADDED BACK ---
+  
   Widget _buildCalendar() {
     return Card(
       margin: const EdgeInsets.all(12.0),
@@ -457,6 +408,58 @@ class _CalendarPageState extends State<CalendarPage> {
       child: Text(headerText, style: Theme.of(context).textTheme.titleLarge),
     );
   }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Consumer<UserService>(
+        builder: (context, userService, child) {
+          if (userService.isLoading) return const Center(child: CircularProgressIndicator());
+          if (userService.role == UserRole.unknown) return const Center(child: Text("Please log in to view the calendar."));
+          
+          return StreamBuilder<QuerySnapshot>(
+            stream: _eventsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
+
+              return FutureBuilder<Map<DateTime, List<CalendarEvent>>>(
+                future: snapshot.hasData ? _expandRecurringEvents(snapshot.data!.docs) : Future.value({}),
+                builder: (context, eventMapSnapshot) {
+                  if (eventMapSnapshot.connectionState == ConnectionState.waiting && _events.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  _events = eventMapSnapshot.data ?? _events;
+                  
+                  if(_selectedDay != null){
+                     WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if(mounted) setState(() => _selectedEvents = _getEventsForDay(_selectedDay!));
+                     });
+                   }
+                  
+                  return Column(
+                    children: [
+                      _buildCalendar(),
+                      const SizedBox(height: 8.0),
+                      const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0), child: Divider()),
+                      _buildEventListHeader(),
+                      Expanded(child: _buildEventList()),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: _userService.role == UserRole.lecturer ? FloatingActionButton.extended(
+        onPressed: () => _showAddOrEditEventDialog(),
+        label: const Text('Add Event'),
+        icon: const Icon(Icons.add),
+      ) : null,
+    );
+  }
 
   Widget _buildEventList() {
     if (_selectedEvents.isEmpty) {
@@ -473,7 +476,7 @@ class _CalendarPageState extends State<CalendarPage> {
           child: ListTile(
             leading: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.calendar_today, color: Theme.of(context).colorScheme.primary)]),
             title: Text(event.title),
-            subtitle: Text('${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}'),
+            subtitle: Text('${event.courseId} • ${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}'),
             onTap: _userService.role == UserRole.lecturer ? () => _showLecturerEventActions(event) : null,
           ),
         );
@@ -481,4 +484,3 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 }
-

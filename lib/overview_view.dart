@@ -71,7 +71,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
 
   final Map<String, Color> gradeColorMap = {
     'A': Colors.green.shade400, 'B': Colors.blue.shade400, 'C': Colors.yellow.shade600,
-    'D': Colors.orange.shade400, 'E': Colors.red.shade400, 'F': Colors.red.shade800,
+    'D': Colors.orange.shade400, 'E': Colors.red.shade400, 'F': const Color.fromARGB(255, 216, 8, 8),
     'In Progress': Colors.grey.shade500,
   };
 
@@ -145,7 +145,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
         final grade = _getLetterGrade(docData['grade']);
         data[grade] = (data[grade] ?? 0) + 1;
       }
-      if (mounted) setState(() { _gradeData = data; _chartTitle = "Grade Distribution: $title"; });
+      if (mounted) setState(() { _gradeData = data; _chartTitle = "Grades: $title"; });
     } catch (e) {
       Fluttertoast.showToast(msg: "Error fetching chart data.");
     } finally {
@@ -211,7 +211,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
       _touchedIndex = -1;
       _studentGradeList.clear();
       _gradeData.clear();
-      _chartTitle = "Please select a filter to begin";
+      _chartTitle = "Select filter(s)";
     });
     if(_filterBreadcrumbs.isNotEmpty) _fetchChartData();
     _fetchOptionsForLevel();
@@ -260,8 +260,8 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             //Text("Welcome, ${userService.schoolAdmin?.name ?? 'Admin'}", style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 20),
-            Text("Student Grade Distribution", style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 10),
+            Text("Student Grades", style: Theme.of(context).textTheme.titleLarge),
             const Divider(),
             
             _DrillDownFilter(
@@ -280,7 +280,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
             _isLoading
                 ? const Padding(padding: EdgeInsets.symmetric(vertical: 64.0), child: Center(child: CircularProgressIndicator()))
                 : _gradeData.isEmpty
-                    ? Padding(padding: const EdgeInsets.symmetric(vertical: 64.0), child: Center(child: Text(_filterBreadcrumbs.isEmpty ? "Select a filter to begin." : "No grade data found.")))
+                    ? Padding(padding: const EdgeInsets.symmetric(vertical: 64.0), child: Center(child: Text(_filterBreadcrumbs.isEmpty ? "" : "No grade data found.")))
                     : Column(
                         children: [
                           Row(
@@ -702,13 +702,23 @@ class _ClassRosterPageState extends State<ClassRosterPage> {
     }
 
     final studentIds = enrollmentsSnapshot.docs.map((doc) => doc.data()['studentId'] as String).toList();
-    
-    final studentsSnapshot = await firestore
-        .collection('students')
-        .where(FieldPath.documentId, whereIn: studentIds)
-        .get();
+    List<Student> roster = [];
 
-    return studentsSnapshot.docs.map((doc) => Student.fromFirestore(doc)).toList();
+    // Chunk the studentIds into lists of 30
+    for (var i = 0; i < studentIds.length; i += 30) {
+      final chunk = studentIds.sublist(i, i + 30 > studentIds.length ? studentIds.length : i + 30);
+      
+      final studentsSnapshot = await firestore
+          .collection('students')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+          
+      roster.addAll(studentsSnapshot.docs.map((doc) => Student.fromFirestore(doc)));
+    }
+    
+    // Sort students alphabetically by name
+    roster.sort((a, b) => a.name.compareTo(b.name));
+    return roster;
   }
 
   @override
@@ -941,7 +951,7 @@ class _LecturerOverviewDashboardState extends State<LecturerOverviewDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Welcome, ${widget.lecturer.name}", style: Theme.of(context).textTheme.headlineSmall),
+              //Text("Welcome, ${widget.lecturer.name}", style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 24),
               Text("Current Teaching Load (2025-2026)", style: Theme.of(context).textTheme.titleLarge),
               const Divider(),

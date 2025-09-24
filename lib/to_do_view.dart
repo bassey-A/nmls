@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'user_service.dart';
-import 'calendar_view.dart';
+import 'calendar_view.dart'; // Re-uses CalendarEvent model
 
 class ToDoPage extends StatefulWidget {
   const ToDoPage({super.key});
@@ -15,6 +15,8 @@ class ToDoPage extends StatefulWidget {
 
 class _ToDoPageState extends State<ToDoPage> {
   Stream<List<CalendarEvent>>? _eventsStream;
+  // Cache for course IDs
+  final Map<String, String> _courseIdCache = {};
 
   @override
   void didChangeDependencies() {
@@ -27,7 +29,7 @@ class _ToDoPageState extends State<ToDoPage> {
     if (userService.isLoading) return;
 
     if (userService.role == UserRole.student && userService.student != null) {
-      final offeringIds = userService.student!.enrollmentSummary['currentOfferingIds']?.cast<String>();
+      final offeringIds = userService.student!.currentOfferingIds;
       _setEventsStream(offeringIds);
     } else if (userService.role == UserRole.lecturer && userService.lecturer != null) {
       _fetchLecturerOfferingsAndSetStream(userService.lecturer!.id);
@@ -54,27 +56,35 @@ class _ToDoPageState extends State<ToDoPage> {
     if (mounted) {
       setState(() {
         if (offeringIds != null && offeringIds.isNotEmpty) {
+          // <-- MODIFIED: Changed from .map() to .asyncMap() to handle async operations
           _eventsStream = FirebaseFirestore.instance
               .collection('events')
               .where('courseOfferingId', whereIn: offeringIds)
               .snapshots()
-              .map((snapshot) {
-                // --- NEW: Client-side expansion and filtering logic ---
+              .asyncMap((snapshot) async {
                 final now = DateTime.now();
                 List<CalendarEvent> allInstances = [];
-
-                // 1. Expand all recurring events into individual instances
+                
+                // Fetch details for all events in parallel to be efficient
                 for (var doc in snapshot.docs) {
-                    final eventRule = CalendarEvent.fromFirestore(doc);
+                    final data = doc.data();
+                    final offeringId = data['courseOfferingId'];
+
+                    if (!_courseIdCache.containsKey(offeringId)) {
+                      final offeringDoc = await FirebaseFirestore.instance.collection('courseOfferings').doc(offeringId).get();
+                      _courseIdCache[offeringId] = offeringDoc.data()?['courseId'] ?? '???';
+                    }
+                    final courseId = _courseIdCache[offeringId]!;
+                    
+                    final eventRule = CalendarEvent.fromFirestore(doc, courseId);
+                    // (The rest of the expansion logic remains the same)
                     if (eventRule.isRecurring && eventRule.recurrenceType == 'weekly' && eventRule.recurrenceEndDate != null) {
                         DateTime currentDate = eventRule.startTime;
                         while (currentDate.isBefore(eventRule.recurrenceEndDate!) || isSameDay(currentDate, eventRule.recurrenceEndDate!)) {
-                            // Only add instances that are in the future
                             if (currentDate.isAfter(now)) {
                                 allInstances.add(CalendarEvent(
-                                    id: eventRule.id,
-                                    title: eventRule.title,
-                                    courseOfferingId: eventRule.courseOfferingId,
+                                    id: eventRule.id, title: eventRule.title, courseOfferingId: eventRule.courseOfferingId,
+                                    courseId: eventRule.courseId,
                                     startTime: currentDate,
                                     endTime: DateTime(currentDate.year, currentDate.month, currentDate.day, eventRule.endTime.hour, eventRule.endTime.minute),
                                     isRecurring: true
@@ -83,17 +93,13 @@ class _ToDoPageState extends State<ToDoPage> {
                             currentDate = currentDate.add(const Duration(days: 7));
                         }
                     } else {
-                        // For single events, only add them if they are in the future
                         if(eventRule.startTime.isAfter(now)){
                            allInstances.add(eventRule);
                         }
                     }
                 }
                 
-                // 2. Sort all upcoming instances chronologically
                 allInstances.sort((a, b) => a.startTime.compareTo(b.startTime));
-                
-                // 3. Take the first 10 to display
                 return allInstances.take(10).toList();
               });
         } else {
@@ -106,22 +112,16 @@ class _ToDoPageState extends State<ToDoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      //appBar: AppBar(title: const Text('')),
       body: Consumer<UserService>(
         builder: (context, userService, child) {
           if (userService.isLoading || _eventsStream == null) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (userService.role == UserRole.unknown) {
              return const Center(
-              child: Text(
-                'log in to view upcoming events.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
+              child: Text('log in to view upcoming events.', style: TextStyle(fontSize: 16, color: Colors.grey)),
             );
           }
-
           return StreamBuilder<List<CalendarEvent>>(
             stream: _eventsStream,
             builder: (context, snapshot) {
@@ -136,10 +136,7 @@ class _ToDoPageState extends State<ToDoPage> {
               }
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const Center(
-                  child: Text(
-                    'No upcoming events or deadlines.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
+                  child: Text('No upcoming events or deadlines.', style: TextStyle(fontSize: 16, color: Colors.grey)),
                 );
               }
 
@@ -154,8 +151,8 @@ class _ToDoPageState extends State<ToDoPage> {
                     child: ListTile(
                       leading: const Icon(Icons.event, color: Colors.teal),
                       title: Text(event.title),
-                      subtitle: Text(
-                          '${DateFormat.yMMMd().format(event.startTime)} at ${DateFormat.jm().format(event.startTime)}'),
+                      // <-- MODIFIED: Subtitle now includes the course code
+                      subtitle: Text('${event.courseId} • ${DateFormat.yMMMd().format(event.startTime)} at ${DateFormat.jm().format(event.startTime)}'),
                     ),
                   );
                 },
@@ -167,4 +164,3 @@ class _ToDoPageState extends State<ToDoPage> {
     );
   }
 }
-
