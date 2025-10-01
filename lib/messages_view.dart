@@ -34,7 +34,7 @@ class MessagesPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (userService.student == null) {
-            return const Center(child: Text("Please log in to see messages."));
+            return const Center(child: Text("Not yet implemented\nChat style or trigger email send???."));
           }
 
           return StreamBuilder<QuerySnapshot>(

@@ -13,6 +13,8 @@ class Student {
   final String email;
   final String programmeId;
   final Map<String, dynamic> enrollmentSummary;
+  final DateTime? lastVisitedAnnouncements;
+  final int unreadMessagesCount;
 
   List<String> get currentOfferingIds =>
       List<String>.from(enrollmentSummary['currentOfferingIds'] ?? []);
@@ -23,31 +25,46 @@ class Student {
     required this.email,
     required this.programmeId,
     required this.enrollmentSummary,
+    this.lastVisitedAnnouncements,
+    this.unreadMessagesCount = 0,
   });
 
   factory Student.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return Student(
-        id: doc.id,
-        name: data['name'] ?? 'No Name',
-        email: data['email'] ?? '',
-        programmeId: data['programmeId'] ?? '',
-        enrollmentSummary: data['enrollmentSummary'] ?? {});
+      id: doc.id,
+      name: data['name'] ?? 'No Name',
+      email: data['email'] ?? '',
+      programmeId: data['programmeId'] ?? '',
+      enrollmentSummary: data['enrollmentSummary'] ?? {},
+      lastVisitedAnnouncements: data['lastVisitedAnnouncements'] != null
+          ? (data['lastVisitedAnnouncements'] as Timestamp).toDate()
+          : null,
+      unreadMessagesCount: data['unreadMessagesCount'] ?? 0,
+    );
   }
 }
-
+// ... (Lecturer and SchoolAdmin models remain the same)
 class Lecturer {
   final String id;
   final String name;
   final String email;
-  Lecturer({required this.id, required this.name, required this.email});
+  final int unreadMessagesCount;
+  Lecturer({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.unreadMessagesCount = 0,
+    });
 
   factory Lecturer.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return Lecturer(
         id: doc.id,
         name: data['name'] ?? 'No Name',
-        email: data['email'] ?? '');
+        email: data['email'] ?? '',
+        unreadMessagesCount: data['unreadMessagesCount'] ?? 0,
+        );
   }
 }
 
@@ -55,18 +72,24 @@ class SchoolAdmin {
   final String id;
   final String name;
   final String email;
-  SchoolAdmin({required this.id, required this.name, required this.email});
+  final int unreadMessagesCount;
+  SchoolAdmin({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.unreadMessagesCount = 0,
+    });
 
   factory SchoolAdmin.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return SchoolAdmin(
         id: doc.id,
         name: data['name'] ?? 'No Name',
-        email: data['email'] ?? '');
+        email: data['email'] ?? '',
+        unreadMessagesCount: data['unreadMessagesCount'] ?? 0,
+        );
   }
 }
-
-// --- THE USER SERVICE (MODIFIED FOR REAL-TIME UPDATES) ---
 
 class UserService extends ChangeNotifier {
   User? _firebaseUser;
@@ -76,7 +99,6 @@ class UserService extends ChangeNotifier {
   UserRole _role = UserRole.unknown;
   bool _isLoading = true;
 
-  // MODIFIED: Added stream subscriptions to manage real-time listeners
   StreamSubscription? _adminSubscription;
   StreamSubscription? _lecturerSubscription;
   StreamSubscription? _studentSubscription;
@@ -94,20 +116,17 @@ class UserService extends ChangeNotifier {
   }
 
   Future<void> _onAuthStateChanged(User? user) async {
-    // Cancel all previous listeners to prevent memory leaks
     await _cancelSubscriptions();
 
     _firebaseUser = user;
-    _resetState(); // Reset all local user data
+    _resetState(); 
 
     if (user == null) {
-      // If user is null, they are logged out. Finalize state.
       _isLoading = false;
       notifyListeners();
       return;
     }
 
-    // User is logged in, start checking roles in order of priority.
     _isLoading = true;
     notifyListeners();
     _listenForAdminRole(user.email!);
@@ -124,7 +143,6 @@ class UserService extends ChangeNotifier {
         _schoolAdmin = SchoolAdmin.fromFirestore(snapshot.docs.first);
         _setRole(UserRole.schoolAdmin, "School Admin", _schoolAdmin!.name);
       } else {
-        // If not an admin, stop listening to admin changes and check for lecturer
         _adminSubscription?.cancel();
         _listenForLecturerRole(email);
       }
@@ -138,13 +156,11 @@ class UserService extends ChangeNotifier {
         .limit(1);
 
     _lecturerSubscription = query.snapshots().listen((snapshot) {
-      // Only proceed if a role hasn't already been determined (i.e., not an admin)
       if (_role != UserRole.schoolAdmin) {
         if (snapshot.docs.isNotEmpty) {
           _lecturer = Lecturer.fromFirestore(snapshot.docs.first);
           _setRole(UserRole.lecturer, "Lecturer", _lecturer!.name);
         } else {
-          // If not a lecturer, stop listening and check for student
           _lecturerSubscription?.cancel();
           _listenForStudentRole(email);
         }
@@ -159,14 +175,11 @@ class UserService extends ChangeNotifier {
         .limit(1);
 
     _studentSubscription = query.snapshots().listen((snapshot) {
-      // Only proceed if a higher role hasn't been found
       if (_role != UserRole.schoolAdmin && _role != UserRole.lecturer) {
         if (snapshot.docs.isNotEmpty) {
           _student = Student.fromFirestore(snapshot.docs.first);
           _setRole(UserRole.student, "Student", _student!.name);
         } else {
-          // If no document found at all, role remains unknown, stop loading.
-          // The AuthService handles creating the default student document on first sign-in.
            _isLoading = false;
            notifyListeners();
         }
@@ -174,12 +187,10 @@ class UserService extends ChangeNotifier {
     });
   }
 
-  /// Centralized method to set the user's role and data and notify listeners.
   void _setRole(UserRole newRole, String roleName, String userName) {
-    // Only show toast and update if the role has actually changed
     if (_role != newRole || _isLoading) {
       _role = newRole;
-      if (!_isLoading) { // Don't show toast on initial load
+      if (!_isLoading) {
          Fluttertoast.showToast(msg: "User role updated to $roleName");
       }
     }
@@ -187,7 +198,6 @@ class UserService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Resets all user-specific data.
   void _resetState() {
     _role = UserRole.unknown;
     _student = null;
@@ -195,7 +205,6 @@ class UserService extends ChangeNotifier {
     _schoolAdmin = null;
   }
 
-  /// Cancels all active Firestore subscriptions.
   Future<void> _cancelSubscriptions() async {
     await _adminSubscription?.cancel();
     await _lecturerSubscription?.cancel();
@@ -233,7 +242,6 @@ class UserService extends ChangeNotifier {
 
   Future<void> signOut() async {
     await FirebaseAuth.instance.signOut();
-    // Auth state listener will handle the rest
   }
 
   @override

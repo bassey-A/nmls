@@ -5,6 +5,10 @@ class AboutTheSchoolPage extends StatelessWidget {
   const AboutTheSchoolPage({super.key});
   @override
   Widget build(BuildContext context) {
-    return const Center(child: Text("Info bbout the school (Default Logged Out View)"));
+    return const Center(child: Text("""
+Not yet implemented.
+Information about the school.
+Default page when the user is not logged in.
+"""));
   }
 }

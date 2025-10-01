@@ -13,6 +13,8 @@ import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'notification_service.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -24,49 +26,76 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
   
-  // --- NEW: Additions for App Links ---
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
   final AuthService _authService = AuthService();
-  // --- END NEW ---
+  
+  bool _wasLoggedIn = false;
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
 
-  // --- NEW: initState to handle link listening ---
   @override
   void initState() {
     super.initState();
     _initAppLinks();
+    _loadBannerAd();
   }
-  // --- END NEW ---
 
-  // --- NEW: dispose to clean up the listener ---
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111', // Replace with your actual Ad Unit ID
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() {
+            _isBannerAdReady = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          debugPrint('BannerAd failed to load: $error');
+        },
+      ),
+    )..load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final userService = Provider.of<UserService>(context);
+    final notificationService = Provider.of<NotificationService>(context, listen: false);
+
+    final bool isLoggedIn = userService.user != null && !userService.isLoading;
+
+    if (isLoggedIn != _wasLoggedIn) {
+      if (isLoggedIn) {
+        notificationService.startListening(userService);
+      } else {
+        notificationService.stopListening();
+      }
+      _wasLoggedIn = isLoggedIn;
+    }
+  }
+
   @override
   void dispose() {
     _linkSubscription?.cancel();
     super.dispose();
   }
-  // --- END NEW ---
 
-
-  // --- NEW: Method to initialize and listen for links ---
   Future<void> _initAppLinks() async {
     _appLinks = AppLinks();
-
-    // Get the initial link that launched the app
     final initialUri = await _appLinks.getInitialLink();
     if (initialUri != null) {
       _handleDeepLink(initialUri);
     }
-
-    // Listen for new links when the app is already running
     _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
       _handleDeepLink(uri);
     });
   }
-  // --- END NEW ---
 
-  // --- NEW: Method to process the link and sign the user in ---
   Future<void> _handleDeepLink(Uri uri) async {
-    // Check if the link is an email sign-in link
     if (FirebaseAuth.instance.isSignInWithEmailLink(uri.toString())) {
       final prefs = await SharedPreferences.getInstance();
       final String? email = prefs.getString('emailForSignIn');
@@ -77,20 +106,14 @@ class _MainScaffoldState extends State<MainScaffold> {
             email: email,
             link: uri.toString(),
           );
-          // The user is now signed in. The onAuthStateChanged listener
-          // in your UserService will handle any UI updates.
-          await prefs.remove('emailForSignIn'); // Clean up stored email
+          await prefs.remove('emailForSignIn');
         } catch (e) {
           debugPrint("Error handling sign-in link: $e");
-          // Optionally show a toast or message to the user
         }
       }
     }
   }
-  // --- END NEW ---
 
-
-  // Define all possible pages and navigation items
   static const List<Widget> _allPages = <Widget>[
     OverviewPage(),
     CalendarPage(),
@@ -98,33 +121,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     AnnouncementPage(),
     MessagesPage(),
     AboutTheSchoolPage(),
-  ];
-
-  static const List<BottomNavigationBarItem> _allNavItems = <BottomNavigationBarItem>[
-    BottomNavigationBarItem(
-      icon: Icon(Icons.school),
-      label: "Overview",
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.calendar_today),
-      label: 'Calendar',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.list),
-      label: 'To Do',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.announcement),
-      label: 'Announce',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.message),
-      label: 'Messages',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.school),
-      label: 'About',
-    ),
   ];
 
   void _onItemTapped(int index) {
@@ -139,8 +135,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     final user = userService.user;
     final bool isLoggedIn = user != null;
 
-    // If the user is not logged in, show a simple scaffold with only the
-    // "About" page and no BottomNavigationBar.
     if (!isLoggedIn) {
       return Scaffold(
         appBar: AppBar(
@@ -157,17 +151,22 @@ class _MainScaffoldState extends State<MainScaffold> {
                 );
               },
               child: const Text('Login', textScaler: TextScaler.linear(1.5),
-              style: TextStyle(color: Colors.white),
+              // style: TextStyle(color: Colors.white),
               ),
             ),
           ],
         ),
         body: const AboutTheSchoolPage(),
-        // No BottomNavigationBar is rendered when not logged in.
       );
     }
 
-    // If the user is logged in, build the full UI with the BottomNavigationBar.
+    String getUserInitial(User user) {
+      if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+        return user.displayName!.trim()[0].toUpperCase();
+      }
+      return 'U';
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('School LMS'),
@@ -177,7 +176,6 @@ class _MainScaffoldState extends State<MainScaffold> {
             child: PopupMenuButton<String>(
               onSelected: (value) {
                 if (value == 'logout') {
-                  // Use the UserService to sign out
                   Provider.of<UserService>(context, listen: false).signOut();
                 }
               },
@@ -195,24 +193,74 @@ class _MainScaffoldState extends State<MainScaffold> {
               child: CircleAvatar(
                 backgroundImage: user.photoURL != null ? NetworkImage(user.photoURL!) : null,
                 child: user.photoURL == null
-                    ? Text(user.displayName?.split(' ')[0].toUpperCase() ?? 'U')
+                    ? Text(getUserInitial(user))
                     : null,
               ),
             ),
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _allPages,
+      body: Column(
+        children: [
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _allPages,
+            ),
+          ),
+          // If the ad is ready, display it at the bottom
+          if (_isBannerAdReady)
+            Container(
+              alignment: Alignment.center,
+              width: _bannerAd!.size.width.toDouble(),
+              height: _bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            )
+        ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: _allNavItems,
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
+      bottomNavigationBar: Consumer<NotificationService>(
+        builder: (context, notificationService, child) {
+          return BottomNavigationBar(
+            items: <BottomNavigationBarItem>[
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.school),
+                label: "Overview",
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.calendar_today),
+                label: 'Calendar',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.list),
+                label: 'To Do',
+              ),
+              BottomNavigationBarItem(
+                icon: Badge(
+                  label: Text('${notificationService.unreadAnnouncements}'),
+                  isLabelVisible: notificationService.unreadAnnouncements > 0,
+                  child: const Icon(Icons.announcement),
+                ),
+                label: 'Announce',
+              ),
+              BottomNavigationBarItem(
+                icon: Badge(
+                  label: Text('${notificationService.unreadMessages}'),
+                  isLabelVisible: notificationService.unreadMessages > 0,
+                  child: const Icon(Icons.message),
+                ),
+                label: 'Messages',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.info_outline),
+                label: 'About',
+              ),
+            ],
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            type: BottomNavigationBarType.fixed,
+          );
+        },
       ),
     );
   }
 }
-

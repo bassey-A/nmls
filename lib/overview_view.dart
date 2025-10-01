@@ -577,7 +577,7 @@ class _StudentAcademicRecordViewState extends State<StudentAcademicRecordView> {
 
     for (final enrollmentDoc in enrollmentsSnapshot.docs) {
       final enrollmentData = enrollmentDoc.data();
-      final offeringId = enrollmentData['offeringId'];
+      final offeringId = enrollmentData['courseOfferingId'];
       String courseId = enrollmentData['courseId'] ?? '';
       String lecturerName = 'N/A';
       
@@ -597,17 +597,27 @@ class _StudentAcademicRecordViewState extends State<StudentAcademicRecordView> {
         final courseDoc = await firestore.collection('courses').doc(courseId).get();
         if (courseDoc.exists) {
           final courseData = courseDoc.data()!;
+          final enrollmentTimestamp = enrollmentData['enrollmentDate'] as Timestamp?;
+          final eDate = enrollmentTimestamp?.toDate() ?? DateTime.now();
+
           records.add(AcademicRecord(
             courseTitle: courseData['title'],
             courseCode: courseData['code'],
             grade: _getLetterGrade(enrollmentData['grade']),
-            enrollmentDate: (enrollmentData['enrollmentDate'] as Timestamp).toDate(),
+            //enrollmentDate: (enrollmentData['enrollmentDate'] as Timestamp).toDate(),
+            enrollmentDate: eDate,
             lecturerName: lecturerName,
           ));
         }
       }
     }
-    records.sort((a, b) => b.enrollmentDate.compareTo(a.enrollmentDate));
+    records.sort((a, b) {
+      final aIsInProgress = a.grade == 'In Progress';
+      final bIsInProgress = b.grade == 'In Progress';
+      if (aIsInProgress && !bIsInProgress) return -1;
+      if (!aIsInProgress && bIsInProgress) return 1;
+      return b.enrollmentDate.compareTo(a.enrollmentDate);
+    });
     return records;
   }
 
@@ -819,7 +829,7 @@ class _NewAnnouncementPageState extends State<NewAnnouncementPage> {
                 maxLines: 5,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a message.';
+                    return 'Announcement cannot be empty';
                   }
                   return null;
                 },
@@ -942,7 +952,6 @@ class _LecturerOverviewDashboardState extends State<LecturerOverviewDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // <-- IMPROVEMENT: Added a RefreshIndicator for easy manual refreshing.
       body: RefreshIndicator(
         onRefresh: () async => _fetchData(),
         child: SingleChildScrollView(

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'user_service.dart';
 import 'calendar_view.dart'; // Re-uses CalendarEvent model
+import 'notification_service.dart'; // <-- MODIFIED: Added import
 
 class ToDoPage extends StatefulWidget {
   const ToDoPage({super.key});
@@ -15,8 +16,17 @@ class ToDoPage extends StatefulWidget {
 
 class _ToDoPageState extends State<ToDoPage> {
   Stream<List<CalendarEvent>>? _eventsStream;
-  // Cache for course IDs
   final Map<String, String> _courseIdCache = {};
+
+  // <-- MODIFIED: Added initState to clear the notification badge
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Note: You will need to add a 'clearCalendarCount' method to your NotificationService
+      // Provider.of<NotificationService>(context, listen: false).clearCalendarCount();
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -56,7 +66,6 @@ class _ToDoPageState extends State<ToDoPage> {
     if (mounted) {
       setState(() {
         if (offeringIds != null && offeringIds.isNotEmpty) {
-          // <-- MODIFIED: Changed from .map() to .asyncMap() to handle async operations
           _eventsStream = FirebaseFirestore.instance
               .collection('events')
               .where('courseOfferingId', whereIn: offeringIds)
@@ -65,7 +74,6 @@ class _ToDoPageState extends State<ToDoPage> {
                 final now = DateTime.now();
                 List<CalendarEvent> allInstances = [];
                 
-                // Fetch details for all events in parallel to be efficient
                 for (var doc in snapshot.docs) {
                     final data = doc.data();
                     final offeringId = data['courseOfferingId'];
@@ -77,7 +85,7 @@ class _ToDoPageState extends State<ToDoPage> {
                     final courseId = _courseIdCache[offeringId]!;
                     
                     final eventRule = CalendarEvent.fromFirestore(doc, courseId);
-                    // (The rest of the expansion logic remains the same)
+
                     if (eventRule.isRecurring && eventRule.recurrenceType == 'weekly' && eventRule.recurrenceEndDate != null) {
                         DateTime currentDate = eventRule.startTime;
                         while (currentDate.isBefore(eventRule.recurrenceEndDate!) || isSameDay(currentDate, eventRule.recurrenceEndDate!)) {
@@ -151,7 +159,6 @@ class _ToDoPageState extends State<ToDoPage> {
                     child: ListTile(
                       leading: const Icon(Icons.event, color: Colors.teal),
                       title: Text(event.title),
-                      // <-- MODIFIED: Subtitle now includes the course code
                       subtitle: Text('${event.courseId} • ${DateFormat.yMMMd().format(event.startTime)} at ${DateFormat.jm().format(event.startTime)}'),
                     ),
                   );

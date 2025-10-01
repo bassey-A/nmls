@@ -2,15 +2,15 @@
 # Import the necessary libraries from the Firebase SDK
 from firebase_functions import firestore_fn, options
 from firebase_admin import initialize_app, firestore
-import math
 
 # Initialize the Firebase Admin SDK to interact with Firestore
 initialize_app()
 
 # Optional: Set the region for your functions for better performance
-options.set_global_options(region="us-central1")
+options.set_global_options(region="africa-south1")
 
-@firestore_fn.on_document_deleted("sessions/{sessionId}")
+# <-- FIX: Added the 'document=' keyword argument
+@firestore_fn.on_document_deleted(document="sessions/{sessionId}")
 def on_session_deleted(event: firestore_fn.Event[firestore_fn.Change]) -> None:
     """
     Triggered when a document in the 'sessions' collection is deleted.
@@ -58,3 +58,56 @@ def on_session_deleted(event: firestore_fn.Event[firestore_fn.Change]) -> None:
         batch.commit()
     
     print(f"Successfully deleted all {len(docs_to_delete)} enrollments.")
+
+
+# <-- FIX: Added the 'document=' keyword argument
+@firestore_fn.on_document_created(document="conversations/{conversationId}/messages/{messageId}")
+def on_message_create(event: firestore_fn.Event[firestore_fn.Change]) -> None:
+    """
+    Triggered when a new message is created. Increments the unread message 
+    count for all participants except the sender, correctly identifying their role.
+    """
+    
+    message_data = event.data.after.to_dict()
+    if message_data is None:
+        print("No data in the new message.")
+        return
+
+    conversation_id = event.params["conversationId"]
+    sender_id = message_data.get("senderId")
+    if not sender_id:
+        print(f"Message {event.params['messageId']} is missing a senderId.")
+        return
+
+    db = firestore.client()
+    conv_ref = db.collection("conversations").document(conversation_id)
+    conv_doc = conv_ref.get()
+
+    if not conv_doc.exists:
+        print(f"Conversation document {conversation_id} not found.")
+        return
+
+    participants = conv_doc.to_dict().get("participantIds", [])
+    batch = db.batch()
+
+    for participant_id in participants:
+        if participant_id != sender_id:
+            collection_name = None
+            # <-- MODIFIED: Check the ID prefix to determine the user's role/collection
+            if participant_id.startswith("stu_"):
+                collection_name = "students"
+            elif participant_id.startswith("lec_"):
+                collection_name = "lecturers"
+            elif participant_id.startswith("adm_"): # Assuming admin IDs start with 'adm_'
+                collection_name = "administrators"
+
+            if collection_name:
+                user_ref = db.collection(collection_name).document(participant_id)
+                batch.update(user_ref, {
+                    "unreadMessagesCount": firestore.Increment(1)
+                })
+            else:
+                print(f"Could not determine collection for participant ID: {participant_id}")
+
+    batch.commit()
+    print(f"Incremented message count for recipients in conversation {conversation_id}.")

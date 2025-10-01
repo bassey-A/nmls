@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 
 class AuthService {
   final FirebaseAuth _firebaseAuth;
@@ -33,6 +33,7 @@ class AuthService {
     required String url, // The deep link URL that will open your app
     required String packageName, // Your Android package name
   }) async {
+    debugPrint("Sending sign-in link to email: $email");
     try {
       var actionCodeSettings = ActionCodeSettings(
         url: url,
@@ -55,8 +56,8 @@ class AuthService {
 
 
   Future<User?> handleSignInLink({
-    required String email, // The email you saved locally in Step 1
-    required String link, // The link that opened your app
+    required String email,
+    required String link,
   }) async {
     try {
       if (_firebaseAuth.isSignInWithEmailLink(link)) {
@@ -76,12 +77,16 @@ class AuthService {
   /// Handles the Google Sign-In flow for both web and mobile platforms.
   /// Returns the signed-in [User] on success, otherwise null.
   Future<User?> signInWithGoogle() async {
+    debugPrint("Handling sign-in link: Google Sign-In");
     try {
       UserCredential userCredential;
       if (kIsWeb || kIsWasm) {
         GoogleAuthProvider googleAuthProvider = GoogleAuthProvider();
         userCredential = await FirebaseAuth.instance.signInWithPopup(googleAuthProvider);
       } else {
+        _googleSignIn.initialize(
+          serverClientId: "704034143445-acpce4ddkhnpl670pk1neueq8mmo69he.apps.googleusercontent.com"
+        );
         final GoogleSignInAccount googleUser = await _googleSignIn.authenticate(
           scopeHint: ['email'],
         );
