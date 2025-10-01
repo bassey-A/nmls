@@ -47,7 +47,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color seedColor = Color.fromARGB(255, 230, 159, 6);
+    const Color seedColor = Color.fromARGB(255, 49, 91, 180);
 
     final lightTheme = FlexColorScheme.light(
       primary: seedColor,
