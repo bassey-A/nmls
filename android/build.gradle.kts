@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.compile.JavaCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 allprojects {
     repositories {
         google()
@@ -21,4 +24,15 @@ subprojects {
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
+}
+
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-Xlint:deprecation")
+}
+
+tasks.withType<KotlinCompile> {
+    kotlinOptions.allWarningsAsErrors = false
+    kotlinOptions.jvmTarget = "1.8" // Ensure this matches your project's jvmTarget
+    // This tells the Kotlin compiler to show deprecation warnings
+    kotlinOptions.freeCompilerArgs += "-Xlint:deprecation"
 }
