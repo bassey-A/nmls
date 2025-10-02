@@ -249,7 +249,7 @@ class _SchoolAdminDashboardState extends State<SchoolAdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final userService = Provider.of<UserService>(context, listen: false);
+    //final userService = Provider.of<UserService>(context, listen: false);
     const gradeOrder = ['A', 'B', 'C', 'D', 'E', 'F', 'In Progress'];
     final sortedGradeEntries = _gradeData.entries.toList()..sort((a, b) => gradeOrder.indexOf(a.key).compareTo(gradeOrder.indexOf(b.key)));
     final totalStudents = _gradeData.values.fold(0.0, (prev, element) => prev + element).toInt();
