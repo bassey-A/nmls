@@ -1,6 +1,7 @@
 // notification_service.dart
 
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_service.dart';
@@ -19,16 +20,30 @@ class NotificationService extends ChangeNotifier {
   int get unreadMessages => _unreadMessages;
   
   void startListening(UserService userService) {
+    if (_userService != null) {
+      _userService!.removeListener(_onUserChanged);
+    }
     _userService = userService;
+    _userService!.addListener(_onUserChanged);
+    _onUserChanged();
+  }
+    
+  void _onUserChanged() {
     stopListening();
+    debugPrint("stopListening completed");
+    if (_userService == null) return;
+    final role = _userService!.role;
+    final student = _userService!.student;
+    final lecturer = _userService!.lecturer;
+    final schoolAdmin = _userService!.schoolAdmin;
 
-    if (userService.role == UserRole.student && userService.student != null) {
-      _listenForStudentAnnouncements(userService.student!);
-      _listenForMessages(userService.student!.id, 'students');
-    } else if (userService.role == UserRole.lecturer && userService.lecturer != null) {
-      _listenForMessages(userService.lecturer!.id, 'lecturers');
-    } else if (userService.role == UserRole.schoolAdmin && userService.schoolAdmin != null) {
-      _listenForMessages(userService.schoolAdmin!.id, 'administrators');
+    if (role == UserRole.student && student != null) {
+      _listenForStudentAnnouncements(student);
+      _listenForMessages(student.id, 'students');
+    } else if (role == UserRole.lecturer && lecturer != null) {
+      _listenForMessages(lecturer.id, 'lecturers');
+    } else if (role == UserRole.schoolAdmin && schoolAdmin != null) {
+      _listenForMessages(schoolAdmin.id, 'administrators');
     }
   }
 
@@ -42,8 +57,11 @@ class NotificationService extends ChangeNotifier {
         .where('date', isGreaterThan: Timestamp.fromDate(lastVisited));
 
     _announcementSub = query.snapshots().listen((snapshot) {
+      debugPrint("Announcement snapshot received with ${snapshot.size} new announcements");
       _unreadAnnouncements = snapshot.size;
       notifyListeners();
+    }, onError: (error) {
+      debugPrint("Error listening to announcements: $error");
     });
   }
 
@@ -97,7 +115,17 @@ class NotificationService extends ChangeNotifier {
   void stopListening() {
     _announcementSub?.cancel();
     _messageSub?.cancel();
+    _announcementSub = null; 
+    _messageSub = null;
     _unreadAnnouncements = 0;
     _unreadMessages = 0;
+  }
+
+  @override
+  void dispose() {
+    debugPrint("Disposing NotificationService.");
+    _userService?.removeListener(_onUserChanged);
+    stopListening();
+    super.dispose();
   }
 }

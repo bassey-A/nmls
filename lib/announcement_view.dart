@@ -32,19 +32,10 @@ class AnnouncementPage extends StatefulWidget {
 class _AnnouncementPageState extends State<AnnouncementPage> {
   Stream<List<Announcement>>? _announcementsStream;
 
-  // <-- MODIFIED: Added initState to clear the notification badge
-  @override
-  void initState() {
-    super.initState();
-    // Use a post-frame callback to ensure the widget is built before accessing Provider
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<NotificationService>(context, listen: false).clearAnnouncementsCount();
-    });
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // We only need to initialize the stream here now
     final userService = Provider.of<UserService>(context);
     _initializeStream(userService);
   }
