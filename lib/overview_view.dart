@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:fl_chart/fl_chart.dart' as fl;
 import 'user_service.dart';
 import 'package:intl/intl.dart';
@@ -533,15 +534,6 @@ class Indicator extends StatelessWidget {
 /************************************** STUDENT ****************************************/
 // --- STUDENT ACADEMIC RECORD IMPLEMENTATION ---
 
-class AcademicRecord {
-  final String courseTitle;
-  final String courseCode;
-  final String grade;
-  final DateTime enrollmentDate;
-  final String lecturerName;
-  AcademicRecord({required this.courseTitle, required this.courseCode, required this.grade, required this.enrollmentDate, required this.lecturerName});
-}
-
 class StudentAcademicRecordView extends StatefulWidget {
   final Student student;
   const StudentAcademicRecordView({super.key, required this.student});
@@ -556,123 +548,74 @@ class _StudentAcademicRecordViewState extends State<StudentAcademicRecordView> {
   @override
   void initState() {
     super.initState();
-    _recordsFuture = _fetchAcademicRecords(widget.student.id);
-  }
-
-  String _getLetterGrade(int? numericGrade) {
-    if (numericGrade == null) return 'In Progress';
-    if (numericGrade >= 90) return 'A';
-    if (numericGrade >= 80) return 'B';
-    if (numericGrade >= 70) return 'C';
-    if (numericGrade >= 60) return 'D';
-    if (numericGrade >= 50) return 'E';
-    return 'F';
-  }
-
-  Future<List<AcademicRecord>> _fetchAcademicRecords(String studentId) async {
-    final records = <AcademicRecord>[];
-    final firestore = FirebaseFirestore.instance;
-
-    final enrollmentsSnapshot = await firestore.collection('enrollments').where('studentId', isEqualTo: studentId).get();
-
-    for (final enrollmentDoc in enrollmentsSnapshot.docs) {
-      final enrollmentData = enrollmentDoc.data();
-      final offeringId = enrollmentData['courseOfferingId'];
-      String courseId = enrollmentData['courseId'] ?? '';
-      String lecturerName = 'N/A';
-      
-      if (offeringId != null) {
-        final offeringDoc = await firestore.collection('courseOfferings').doc(offeringId).get();
-        if (offeringDoc.exists) {
-           courseId = offeringDoc.data()!['courseId'];
-           final lecturerId = offeringDoc.data()!['lecturerId'];
-           final lecturerDoc = await firestore.collection('lecturers').doc(lecturerId).get();
-           if(lecturerDoc.exists){
-             lecturerName = lecturerDoc.data()!['name'];
-           }
-        }
-      }
-
-      if (courseId.isNotEmpty) {
-        final courseDoc = await firestore.collection('courses').doc(courseId).get();
-        if (courseDoc.exists) {
-          final courseData = courseDoc.data()!;
-          final enrollmentTimestamp = enrollmentData['enrollmentDate'] as Timestamp?;
-          final eDate = enrollmentTimestamp?.toDate() ?? DateTime.now();
-
-          records.add(AcademicRecord(
-            courseTitle: courseData['title'],
-            courseCode: courseData['code'],
-            grade: _getLetterGrade(enrollmentData['grade']),
-            //enrollmentDate: (enrollmentData['enrollmentDate'] as Timestamp).toDate(),
-            enrollmentDate: eDate,
-            lecturerName: lecturerName,
-          ));
-        }
-      }
-    }
-    records.sort((a, b) {
-      final aIsInProgress = a.grade == 'In Progress';
-      final bIsInProgress = b.grade == 'In Progress';
-      if (aIsInProgress && !bIsInProgress) return -1;
-      if (!aIsInProgress && bIsInProgress) return 1;
-      return b.enrollmentDate.compareTo(a.enrollmentDate);
-    });
-    return records;
+    _recordsFuture = Provider.of<UserService>(context, listen: false).getAcademicRecords();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder<List<AcademicRecord>>(
-        future: _recordsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
-          if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("No academic records found."));
-
-          final records = snapshot.data!;
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: records.length,
-            itemBuilder: (context, index) {
-              final record = records[index];
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ExpansionTile(
-                  leading: CircleAvatar(
-                    backgroundColor: record.grade == 'In Progress' ? Colors.blueGrey : Theme.of(context).colorScheme.primary,
-                    child: Text(record.grade.substring(0,1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                  title: Text(record.courseTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(record.courseCode),
-                  children: [
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.calendar_today, size: 20),
-                      title: const Text('Enrolled'),
-                      subtitle: Text(DateFormat.yMMMd().format(record.enrollmentDate)),
-                    ),
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.person_outline, size: 20),
-                      title: const Text('Lecturer'),
-                      subtitle: Text(record.lecturerName),
-                    ),
-                     ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.star_border, size: 20),
-                      title: const Text('Grade'),
-                      subtitle: Text(record.grade),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
+      // ADDITION: Wrap with RefreshIndicator to allow manual refresh.
+      body: RefreshIndicator(
+        onRefresh: () async {
+          // When the user pulls to refresh, call the service with forceRefresh: true
+          setState(() {
+            _recordsFuture = Provider.of<UserService>(context, listen: false)
+                .getAcademicRecords(forceRefresh: true);
+          });
         },
+        child: FutureBuilder<List<AcademicRecord>>(
+          future: _recordsFuture,
+          builder: (context, snapshot) {
+            // The rest of the build method remains exactly the same.
+            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+            if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+            if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("No academic records found."));
+            
+            final records = snapshot.data!;
+            // Add AlwaysScrollableScrollPhysics to ensure RefreshIndicator works even when the list is short.
+            return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(8),
+              itemCount: records.length,
+              itemBuilder: (context, index) {
+                final record = records[index];
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: ExpansionTile(
+                    leading: CircleAvatar(
+                      backgroundColor: record.grade == 'In Progress' ? Colors.blueGrey : Theme.of(context).colorScheme.primary,
+                      child: Text(record.grade.substring(0,1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                    title: Text(record.courseTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(record.courseCode),
+                    children: [
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.calendar_today, size: 20),
+                        title: const Text('Enrolled'),
+                        subtitle: Text(DateFormat.yMMMd().format(record.enrollmentDate)),
+                      ),
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.person_outline, size: 20),
+                        title: const Text('Lecturer'),
+                        subtitle: Text(record.lecturerName),
+                      ),
+                       ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.star_border, size: 20),
+                        title: const Text('Grade'),
+                        subtitle: Text(record.grade),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -731,6 +674,18 @@ class _ClassRosterPageState extends State<ClassRosterPage> {
     return roster;
   }
 
+  Future<void> _launchEmailToStudent(Student student) async {
+    final encodedSubject = Uri.encodeComponent(widget.courseTitle);
+    final Uri emailLaunchUri = Uri.parse(
+      'mailto:${student.email}?subject=$encodedSubject'
+    );
+    if (await canLaunchUrl(emailLaunchUri)) {
+      await launchUrl(emailLaunchUri);
+    } else {
+      Fluttertoast.showToast(msg: "Could not launch email client.", backgroundColor: Colors.red);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -756,6 +711,7 @@ class _ClassRosterPageState extends State<ClassRosterPage> {
                 leading: CircleAvatar(child: Text(student.name.isNotEmpty ? student.name.substring(0, 1) : 'U')),
                 title: Text(student.name),
                 subtitle: Text(student.email),
+                onTap: () => _launchEmailToStudent(student),
               );
             },
           );

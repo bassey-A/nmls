@@ -43,7 +43,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _loadBannerAd() {
     _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111', // Replace with your actual Ad Unit ID
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111', // change before deployment
       request: const AdRequest(),
       size: AdSize.banner,
       listener: BannerAdListener(
@@ -124,6 +124,9 @@ class _MainScaffoldState extends State<MainScaffold> {
   ];
 
   void _onItemTapped(int index) {
+    if (index == 3) {
+      Provider.of<NotificationService>(context, listen: false).clearAnnouncementsCount();
+    }
     setState(() {
       _selectedIndex = index;
     });
@@ -137,12 +140,16 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     if (!isLoggedIn) {
       return Scaffold(
+        // backgroundColor: Colors.grey[200],
         appBar: AppBar(
-          title: const Text('School LMS'), centerTitle: true,
+          title: const Text('School LMS',
+          style: TextStyle(color: Colors.green),
+          ),
+          centerTitle: true,
           actions: <Widget>[
             TextButton(
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                foregroundColor: Theme.of(context).colorScheme.onTertiary,
               ),
               onPressed: () {
                 Navigator.push(
@@ -151,7 +158,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                 );
               },
               child: const Text('Login', textScaler: TextScaler.linear(1.5),
-              // style: TextStyle(color: Colors.white),
+              style: TextStyle(color: Colors.green),
               ),
             ),
           ],
@@ -168,6 +175,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     }
 
     return Scaffold(
+      //backgroundColor: Colors.grey[750],
       appBar: AppBar(
         title: const Text('School LMS'),
         actions: <Widget>[
