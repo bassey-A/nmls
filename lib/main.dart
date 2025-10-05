@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
+import 'package:nmls/ad_service.dart';
 import 'package:nmls/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
-
+import 'ad_service.dart';
 import 'app_config.dart';
 import 'user_service.dart';
 import 'firebase_options.dart';
@@ -30,11 +31,12 @@ Future<void> main() async {
   Hive.registerAdapter(LecturerCourseInfoAdapter());
   Hive.registerAdapter(AnnouncementInfoAdapter());
 
-  // HIVE SETUP: Open all the boxes you will use for caching.
+  // Open Hive boxes for user data caching
   await Hive.openBox<List>('academicRecords');
   await Hive.openBox<List>('classRosters');
   await Hive.openBox<List>('teachingLoad');
   await Hive.openBox<List>('announcements');
+  await Hive.openBox<Map>('chartData');
   
   runApp(
     MultiProvider(
@@ -47,6 +49,9 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<NotificationService>(
           create: (_) => NotificationService(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AdService(),
         ),
       ],
       child: const MyApp(),

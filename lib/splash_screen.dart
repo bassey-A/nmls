@@ -32,6 +32,7 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (e) {
       debugPrint("MobileAds.instance.initialize() failed: $e");
     }
+    if (!mounted) return;
     final userService = Provider.of<UserService>(context, listen: false);
     
     // This function will wait until the 'isLoading' flag in UserService is false.

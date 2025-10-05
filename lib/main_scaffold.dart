@@ -15,6 +15,7 @@ import 'auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'notification_service.dart';
+import 'ad_service.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -31,33 +32,11 @@ class _MainScaffoldState extends State<MainScaffold> {
   final AuthService _authService = AuthService();
   
   bool _wasLoggedIn = false;
-  BannerAd? _bannerAd;
-  bool _isBannerAdReady = false;
 
   @override
   void initState() {
     super.initState();
     _initAppLinks();
-    _loadBannerAd();
-  }
-
-  void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111', // change before deployment
-      request: const AdRequest(),
-      size: AdSize.banner,
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          setState(() {
-            _isBannerAdReady = true;
-          });
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-          debugPrint('BannerAd failed to load: $error');
-        },
-      ),
-    )..load();
   }
 
   @override
@@ -137,6 +116,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     final userService = Provider.of<UserService>(context);
     final user = userService.user;
     final bool isLoggedIn = user != null;
+    final adService = Provider.of<AdService>(context);
 
     if (!isLoggedIn) {
       return Scaffold(
@@ -217,12 +197,12 @@ class _MainScaffoldState extends State<MainScaffold> {
             ),
           ),
           // If the ad is ready, display it at the bottom
-          if (_isBannerAdReady)
+          if (adService.isBannerAdReady)
             Container(
               alignment: Alignment.center,
-              width: _bannerAd!.size.width.toDouble(),
-              height: _bannerAd!.size.height.toDouble(),
-              child: AdWidget(ad: _bannerAd!),
+              width: adService.bannerAd!.size.width.toDouble(),
+              height: adService.bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: adService.bannerAd!),
             )
         ],
       ),
