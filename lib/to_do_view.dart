@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'user_service.dart';
 import 'calendar_view.dart'; // Re-uses CalendarEvent model
-//import 'notification_service.dart'; // <-- MODIFIED: Added import
+import 'notification_service.dart'; // <-- MODIFIED: Added import
 
 class ToDoPage extends StatefulWidget {
   const ToDoPage({super.key});

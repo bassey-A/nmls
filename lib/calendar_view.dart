@@ -271,7 +271,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     children: [
                       if(offerings.isNotEmpty)
                         DropdownButtonFormField<LecturerCourseOffering>(
-                          initialValue: selectedCourse, //value -> initialValue
+                          value: selectedCourse,
                           isExpanded: true,
                           items: offerings.map((offering) => DropdownMenuItem(value: offering, child: Text(offering.courseTitle, overflow: TextOverflow.ellipsis))).toList(),
                           onChanged: (value) => setDialogState(() => selectedCourse = value),

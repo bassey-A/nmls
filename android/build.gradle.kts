@@ -32,7 +32,7 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<KotlinCompile> {
     kotlinOptions.allWarningsAsErrors = false
-    kotlinOptions.jvmTarget = "1.8" // Ensure this matches your project's jvmTarget
+    kotlinOptions.jvmTarget = "17" // Ensure this matches your project's jvmTarget
     // This tells the Kotlin compiler to show deprecation warnings
     kotlinOptions.freeCompilerArgs += "-Xlint:deprecation"
 }
